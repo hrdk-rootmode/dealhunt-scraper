@@ -15,12 +15,14 @@
       },
       "title": {
         "selectors": [
-          "h2 span.a-text-normal",
           "h2 a span",
-          ".a-size-medium.a-text-normal"
+          "h2 span",
+          "span.a-text-normal",
+          "h2.a-size-mini",
+          "img.s-image[alt]"
         ],
         "confidence": 100,
-        "last_worked": "2025-01-30"
+        "last_worked": "2026-01-30"
       },
       "current_price": {
         "selectors": [
