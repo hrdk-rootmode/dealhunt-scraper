@@ -4,6 +4,7 @@ const cron = require('node-cron');
 const platformLoader = require('./src/scrapers/core/platform-loader');
 const { connectRedis, cache } = require('./src/config/redis');
 const { pool } = require('./src/config/database');
+const Product = require('./src/models/Products');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -630,8 +631,11 @@ app.post('/products/:id/refresh', async (req, res) => {
                 
                 if (typeof scraper.refreshProduct === 'function') {
                     await scraper.refreshProduct(product.product_url);
-                } else if (typeof scraper.scrapeProductPage === 'function') {
-                    await scraper.scrapeProductPage(product.product_url);
+                } else if (typeof scraper.scrapeProductDetail === 'function') {
+                    const enhancedData = await scraper.scrapeProductDetail(product.product_url, product.product_id);
+                    if (enhancedData) {
+                        await Product.updateFromDetailPage(product.id, enhancedData);
+                    }
                 } else {
                     throw new Error(`${product.platform} scraper does not support product refresh`);
                 }
@@ -704,8 +708,11 @@ app.post('/products/refresh/:platform', async (req, res) => {
                 try {
                     if (typeof scraper.refreshProduct === 'function') {
                         await scraper.refreshProduct(product.product_url);
-                    } else if (typeof scraper.scrapeProductPage === 'function') {
-                        await scraper.scrapeProductPage(product.product_url);
+                    } else if (typeof scraper.scrapeProductDetail === 'function') {
+                        const enhancedData = await scraper.scrapeProductDetail(product.product_url, product.product_id);
+                        if (enhancedData) {
+                            await Product.updateFromDetailPage(product.id, enhancedData);
+                        }
                     }
                     refreshed++;
                     console.log(`✅ Refreshed: ${product.title?.substring(0, 50)}...`);
