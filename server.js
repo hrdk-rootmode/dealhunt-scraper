@@ -229,6 +229,61 @@ app.get('/products', async (req, res) => {
     }
 });
 
+// Get products with AI data
+app.get('/products/ai', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = (page - 1) * limit;
+
+        const result = await pool.query(`
+            SELECT 
+                p.id,
+                p.product_id,
+                pl.name as platform,
+                p.title,
+                p.brand,
+                p.category,
+                p.ai_category,
+                p.subcategory,
+                p.ai_tags,
+                p.current_price,
+                p.original_price,
+                p.discount_percent,
+                p.rating,
+                p.review_count,
+                p.image_url,
+                p.product_url,
+                p.is_available,
+                p.ai_processed,
+                p.last_updated
+            FROM products p
+            JOIN platforms pl ON p.platform_id = pl.id
+            WHERE p.is_available = true
+            ORDER BY p.last_updated DESC
+            LIMIT $1 OFFSET $2
+        `, [limit, offset]);
+
+        const countResult = await pool.query('SELECT COUNT(*) FROM products WHERE is_available = true');
+        const totalCount = parseInt(countResult.rows[0].count);
+
+        res.json({
+            products: result.rows,
+            pagination: {
+                page: page,
+                limit: limit,
+                total: totalCount,
+                pages: Math.ceil(totalCount / limit)
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+});
+
 // ==================== CRON JOBS ====================
 
 // Scheduled scraping job - 2 AM IST daily
