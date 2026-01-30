@@ -1,0 +1,165 @@
+{
+  "amazon": {
+    "version": "2.0",
+    "last_updated": "2026-01-30T20:36:11.077Z",
+    "last_validated": "2025-01-30",
+    "patterns": {
+      "product_card": {
+        "selectors": [
+          "[data-component-type=\"s-search-result\"]",
+          ".s-result-item[data-asin]",
+          "div[data-asin]:not([data-asin=\"\"])"
+        ],
+        "confidence": 100,
+        "last_worked": "2025-01-30"
+      },
+      "title": {
+        "selectors": [
+          "h2 span.a-text-normal",
+          "h2 a span",
+          ".a-size-medium.a-text-normal"
+        ],
+        "confidence": 100,
+        "last_worked": "2025-01-30"
+      },
+      "current_price": {
+        "selectors": [
+          ".a-price:not(.a-text-price) .a-price-whole",
+          "span.a-price-whole",
+          ".a-price .a-offscreen"
+        ],
+        "confidence": 100,
+        "last_worked": "2026-01-30T20:36:11.209Z"
+      },
+      "original_price": {
+        "selectors": [
+          ".a-text-price .a-offscreen",
+          ".a-text-price.a-text-strike",
+          ".a-price.a-text-strike",
+          "span.a-text-strike",
+          "span[aria-hidden='true']~span.a-text-strike"
+        ],
+        "confidence": 100,
+        "last_worked": "2026-01-30T20:36:11.205Z",
+        "last_healed": "2026-01-30T20:36:11.077Z"
+      },
+      "rating": {
+        "selectors": [
+          "i.a-icon-star-small span.a-icon-alt",
+          ".a-icon-star-small .a-icon-alt",
+          "[aria-label*=\"out of 5 stars\"]",
+          ".a-icon-alt"
+        ],
+        "confidence": 100,
+        "last_worked": "2025-01-30"
+      },
+      "review_count": {
+        "selectors": [
+          "span.a-size-base.s-underline-text",
+          "div[data-cy=\"reviews-block\"] span.a-size-base",
+          "span[aria-label*=\"ratings\"]",
+          "a.s-underline-text span"
+        ],
+        "confidence": 95,
+        "last_worked": "2025-01-30"
+      },
+      "image": {
+        "selectors": [
+          "img.s-image",
+          ".s-image",
+          "img[data-image-index]"
+        ],
+        "confidence": 100,
+        "last_worked": "2026-01-30T20:36:11.211Z"
+      },
+      "product_url": {
+        "selectors": [
+          "a[href*='/dp/']",
+          "div.puis-padding-right-small a",
+          "div.s-product-image-container a",
+          "h2 a.a-link-normal",
+          "a.a-link-normal[href*='/dp/']"
+        ],
+        "confidence": 100,
+        "last_worked": "2026-01-30T20:36:11.202Z",
+        "last_healed": "2026-01-30T19:48:03.250Z"
+      }
+    }
+  },
+  "flipkart": {
+    "version": "2.0",
+    "last_updated": "2025-01-31T10:00:00.000Z",
+    "last_validated": "2025-01-31",
+    "patterns": {
+      "product_card": {
+        "selectors": [
+          "div[data-id]"
+        ],
+        "confidence": 100,
+        "last_worked": "2025-01-31"
+      },
+      "title": {
+        "selectors": [
+          "a[href*='/p/']"
+        ],
+        "confidence": 100,
+        "last_worked": "2025-01-31"
+      },
+      "current_price": {
+        "selectors": [
+          "div.hZ3P6w.DeU9vF",
+          "div.hZ3P6w.KTtanE",
+          "div.hZ3P6w"
+        ],
+        "confidence": 100,
+        "last_worked": "2025-01-31"
+      },
+      "original_price": {
+        "selectors": [
+          "div.kRYCnD.gxR4EY",
+          "div.kRYCnD"
+        ],
+        "confidence": 90,
+        "last_worked": "2025-01-31"
+      },
+      "discount_price": {
+        "selectors": [
+          "div.HZ0E6r.Rm9_cy",
+          "div.HZ0E6r"
+        ],
+        "confidence": 85,
+        "last_worked": "2025-01-31"
+      },
+      "rating": {
+        "selectors": [
+          "div",
+          "span"
+        ],
+        "confidence": 90,
+        "last_worked": "2025-01-31"
+      },
+      "review_count": {
+        "selectors": [
+          "div",
+          "span"
+        ],
+        "confidence": 90,
+        "last_worked": "2025-01-31"
+      },
+      "image": {
+        "selectors": [
+          "img"
+        ],
+        "confidence": 100,
+        "last_worked": "2025-01-31"
+      },
+      "product_url": {
+        "selectors": [
+          "a[href*='/p/']"
+        ],
+        "confidence": 100,
+        "last_worked": "2025-01-31"
+      }
+    }
+  }
+}

@@ -103,6 +103,179 @@ app.get('/platforms', (req, res) => {
     });
 });
 
+// Get scraping status
+app.get('/status/:platform', async (req, res) => {
+    try {
+        const { platform } = req.params;
+        const status = await cache.getScrapingStatus(platform);
+        
+        res.json({
+            platform: platform,
+            status: status || { status: 'idle', message: 'No scraping in progress' }
+        });
+    } catch (error) {
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+});
+
+// Get recent scrape logs
+app.get('/logs', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 10;
+        
+        const result = await pool.query(`
+            SELECT 
+                sl.*,
+                p.name as platform
+            FROM scrape_logs sl
+            JOIN platforms p ON sl.platform_id = p.id
+            ORDER BY sl.started_at DESC
+            LIMIT $1
+        `, [limit]);
+
+        res.json({
+            logs: result.rows,
+            count: result.rows.length
+        });
+    } catch (error) {
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+});
+
+// Get product stats
+app.get('/stats', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT 
+                p.name as platform,
+                COUNT(pr.id) as total_products,
+                COUNT(CASE WHEN pr.is_available THEN 1 END) as available_products,
+                ROUND(AVG(pr.current_price)::numeric, 2) as avg_price,
+                MIN(pr.current_price) as min_price,
+                MAX(pr.current_price) as max_price,
+                MAX(pr.last_updated) as last_updated
+            FROM products pr
+            JOIN platforms p ON pr.platform_id = p.id
+            GROUP BY p.name
+        `);
+
+        // Overall stats
+        const overall = await pool.query(`
+            SELECT 
+                COUNT(*) as total_products,
+                COUNT(DISTINCT brand) as total_brands,
+                COUNT(DISTINCT category) as total_categories,
+                ROUND(AVG(current_price)::numeric, 2) as avg_price
+            FROM products
+            WHERE is_available = true
+        `);
+
+        res.json({
+            byPlatform: result.rows,
+            overall: overall.rows[0]
+        });
+    } catch (error) {
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+});
+
+// Get products (with pagination)
+app.get('/products', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = (page - 1) * limit;
+
+        const result = await pool.query(`
+            SELECT * FROM product_summary
+            ORDER BY last_updated DESC
+            LIMIT $1 OFFSET $2
+        `, [limit, offset]);
+
+        const countResult = await pool.query('SELECT COUNT(*) FROM products WHERE is_available = true');
+        const totalCount = parseInt(countResult.rows[0].count);
+
+        res.json({
+            products: result.rows,
+            pagination: {
+                page: page,
+                limit: limit,
+                total: totalCount,
+                pages: Math.ceil(totalCount / limit)
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+});
+
+// Get products with AI data
+app.get('/products/ai', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = (page - 1) * limit;
+
+        const result = await pool.query(`
+            SELECT 
+                p.id,
+                p.product_id,
+                pl.name as platform,
+                p.title,
+                p.brand,
+                p.category,
+                p.ai_category,
+                p.subcategory,
+                p.ai_tags,
+                p.current_price,
+                p.original_price,
+                p.discount_percent,
+                p.rating,
+                p.review_count,
+                p.image_url,
+                p.product_url,
+                p.is_available,
+                p.ai_processed,
+                p.last_updated
+            FROM products p
+            JOIN platforms pl ON p.platform_id = pl.id
+            WHERE p.is_available = true
+            ORDER BY p.last_updated DESC
+            LIMIT $1 OFFSET $2
+        `, [limit, offset]);
+
+        const countResult = await pool.query('SELECT COUNT(*) FROM products WHERE is_available = true');
+        const totalCount = parseInt(countResult.rows[0].count);
+
+        res.json({
+            products: result.rows,
+            pagination: {
+                page: page,
+                limit: limit,
+                total: totalCount,
+                pages: Math.ceil(totalCount / limit)
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+});
+
 // ==================== DYNAMIC SCRAPING ROUTES ====================
 
 // Dynamic scrape trigger for any platform
@@ -117,66 +290,43 @@ app.post('/scrape/:platform', async (req, res) => {
             return handleScrapeAll(req, res);
         }
         
-        // Check if scraping already running
-        const status = await cache.getScrapingStatus(platformLower);
-        if (status && status.status === 'running') {
-            return res.status(409).json({
-                status: 'error',
-                message: `Scraping already in progress for ${platform}`,
-                currentStatus: status
-            });
-        }
-
-        // Validate platform exists
-        const availablePlatforms = platformLoader.listPlatforms();
-        if (!availablePlatforms.map(p => p.toLowerCase()).includes(platformLower)) {
+        // Check if platform exists
+        const availablePlatforms = platformLoader.getAvailablePlatforms();
+        if (!availablePlatforms.includes(platformLower)) {
             return res.status(404).json({
                 status: 'error',
                 message: `Platform '${platform}' not found`,
                 availablePlatforms: availablePlatforms
             });
         }
+        
+        // Check if scraping is already running
+        const status = await cache.getScrapingStatus(platformLower);
+        if (status && status.status === 'running') {
+            return res.status(409).json({
+                status: 'error',
+                message: 'Scraping is already in progress',
+                platform: platformLower,
+                currentStatus: status
+            });
+        }
 
         res.json({
             status: 'started',
-            message: `Scraping ${platform} initiated`,
+            message: `Scraping ${platformLower} initiated`,
+            platform: platformLower,
             maxProducts: maxProducts
         });
 
         // Run scraper asynchronously
-        (async () => {
-            try {
-                const scraper = platformLoader.getPlatform(platformLower);
-                await cache.setScrapingStatus(platformLower, { 
-                    status: 'running',
-                    startedAt: new Date().toISOString(),
-                    platform: platformLower 
-                });
-
-                console.log(`\n✅ Starting scrape: ${platformLower} (max ${maxProducts} products)`);
-                const startTime = Date.now();
-                const result = await scraper.scrape({ maxProducts });
-                const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-
-                await cache.setScrapingStatus(platformLower, { 
-                    status: 'completed',
-                    completedAt: new Date().toISOString(),
-                    platform: platformLower,
-                    productsScraped: result?.length || 0,
-                    duration: `${duration}s`
-                });
-
-                console.log(`✅ Scrape completed for ${platformLower} - ${result?.length || 0} products in ${duration}s`);
-            } catch (err) {
-                await cache.setScrapingStatus(platformLower, { 
-                    status: 'failed',
-                    error: err.message,
-                    failedAt: new Date().toISOString(),
-                    platform: platformLower
-                });
-                console.error(`❌ Scrape failed for ${platformLower}:`, err.message);
-            }
-        })();
+        const scraper = platformLoader.getScraper(platformLower);
+        scraper.scrape({ maxProducts })
+            .then((results) => {
+                console.log(`✅ Manual ${platformLower} scrape completed: ${results?.length || 0} products`);
+            })
+            .catch(err => {
+                console.error(`❌ Manual ${platformLower} scrape failed:`, err.message);
+            });
 
     } catch (error) {
         res.status(500).json({
@@ -186,98 +336,52 @@ app.post('/scrape/:platform', async (req, res) => {
     }
 });
 
-// Scrape all platforms
+// Helper function for scraping all platforms
 async function handleScrapeAll(req, res) {
     try {
-        const { maxProducts = 5 } = req.body;
-        const platforms = platformLoader.listPlatforms();
-
-        if (platforms.length === 0) {
-            return res.status(400).json({
-                status: 'error',
-                message: 'No platforms available to scrape'
-            });
-        }
-
+        const { maxProducts = 100 } = req.body;
+        const platforms = platformLoader.getAvailablePlatforms();
+        
         res.json({
             status: 'started',
-            message: `Scraping all platforms initiated`,
+            message: 'Scraping all platforms initiated',
             platforms: platforms,
             maxProducts: maxProducts
         });
 
-        // Run all scrapers asynchronously in sequence
+        // Run scrapers sequentially (to avoid overwhelming resources)
         (async () => {
-            console.log('\n' + '='.repeat(60));
-            console.log('🚀 MULTI-PLATFORM SCRAPE INITIATED');
-            console.log(`📋 Platforms: ${platforms.join(', ')}`);
-            console.log(`🎯 Max products per platform: ${maxProducts}`);
-            console.log('='.repeat(60) + '\n');
-
             const results = {};
-
             for (const platform of platforms) {
                 try {
-                    console.log(`\n⏳ Starting scrape: ${platform.toUpperCase()}`);
+                    console.log(`\n${'='.repeat(40)}`);
+                    console.log(`🚀 Starting ${platform} scrape...`);
+                    console.log('='.repeat(40));
                     
-                    await cache.setScrapingStatus(platform, { 
-                        status: 'running',
-                        startedAt: new Date().toISOString()
-                    });
-
-                    const scraper = platformLoader.getPlatform(platform);
-                    const startTime = Date.now();
-                    const result = await scraper.scrape({ maxProducts });
-                    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-
-                    results[platform] = {
-                        status: 'success',
-                        products: result?.length || 0,
-                        duration: `${duration}s`
+                    const scraper = platformLoader.getScraper(platform);
+                    const scraped = await scraper.scrape({ maxProducts });
+                    results[platform] = { 
+                        status: 'success', 
+                        products: scraped?.length || 0 
                     };
-
-                    await cache.setScrapingStatus(platform, { 
-                        status: 'completed',
-                        completedAt: new Date().toISOString(),
-                        productsScraped: result?.length || 0,
-                        duration: `${duration}s`
-                    });
-
-                    console.log(`✅ ${platform}: ${result?.length || 0} products in ${duration}s`);
-
-                    // Respectful delay between platforms
-                    if (platforms.indexOf(platform) < platforms.length - 1) {
-                        console.log('⏳ Waiting 5 seconds before next platform...');
-                        await new Promise(r => setTimeout(r, 5000));
-                    }
-
+                    console.log(`✅ ${platform} scrape completed: ${scraped?.length || 0} products`);
+                    
+                    // Small delay between platforms
+                    await new Promise(r => setTimeout(r, 5000));
+                    
                 } catch (err) {
                     results[platform] = { 
-                        status: 'failed',
+                        status: 'failed', 
                         error: err.message 
                     };
-
-                    await cache.setScrapingStatus(platform, { 
-                        status: 'failed',
-                        error: err.message,
-                        failedAt: new Date().toISOString()
-                    });
-
-                    console.error(`❌ ${platform} failed:`, err.message);
+                    console.error(`❌ ${platform} scrape failed:`, err.message);
                 }
             }
-
-            console.log('\n' + '='.repeat(60));
-            console.log('📊 MULTI-PLATFORM SCRAPE SUMMARY');
-            console.log('='.repeat(60));
-            Object.entries(results).forEach(([platform, result]) => {
-                const icon = result.status === 'success' ? '✅' : '❌';
-                const info = result.status === 'success'
-                    ? `${result.products} products (${result.duration})`
-                    : result.error;
-                console.log(`${icon} ${platform}: ${info}`);
-            });
-            console.log('='.repeat(60) + '\n');
+            
+            console.log('\n' + '='.repeat(50));
+            console.log('📊 All Platforms Scrape Summary:');
+            console.log(JSON.stringify(results, null, 2));
+            console.log('='.repeat(50) + '\n');
         })();
 
     } catch (error) {
@@ -288,6 +392,171 @@ async function handleScrapeAll(req, res) {
     }
 }
 
+// ==================== PRODUCT REFRESH ROUTE ====================
+
+// Refresh individual product
+app.post('/products/:id/refresh', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Get product from database
+        const result = await pool.query(`
+            SELECT p.*, pl.name as platform_name
+            FROM products p
+            JOIN platforms pl ON p.platform_id = pl.id
+            WHERE p.id = $1
+        `, [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                status: 'error',
+                message: `Product with ID ${id} not found`
+            });
+        }
+        
+        const product = result.rows[0];
+        const platformName = product.platform_name.toLowerCase();
+        
+        // Check if scraper available for this platform
+        const availablePlatforms = platformLoader.getAvailablePlatforms();
+        if (!availablePlatforms.includes(platformName)) {
+            return res.status(400).json({
+                status: 'error',
+                message: `No scraper available for platform: ${platformName}`,
+                availablePlatforms: availablePlatforms
+            });
+        }
+        
+        // Check if product URL exists
+        if (!product.product_url) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Product URL not found in database'
+            });
+        }
+        
+        res.json({
+            status: 'refreshing',
+            message: `Refreshing product ${id} from ${platformName}`,
+            productId: id,
+            platform: platformName,
+            productUrl: product.product_url
+        });
+        
+        // Refresh asynchronously
+        const scraper = platformLoader.getScraper(platformName);
+        
+        // Check if refreshProduct method exists, otherwise use scrapeProductPage
+        if (typeof scraper.refreshProduct === 'function') {
+            scraper.refreshProduct(product.product_url)
+                .then((refreshedProduct) => {
+                    console.log(`✅ Product ${id} refreshed successfully`);
+                })
+                .catch(err => {
+                    console.error(`❌ Product ${id} refresh failed:`, err.message);
+                });
+        } else if (typeof scraper.scrapeProductPage === 'function') {
+            scraper.scrapeProductPage(product.product_url)
+                .then((refreshedProduct) => {
+                    console.log(`✅ Product ${id} refreshed successfully via scrapeProductPage`);
+                })
+                .catch(err => {
+                    console.error(`❌ Product ${id} refresh failed:`, err.message);
+                });
+        } else {
+            console.error(`❌ No refresh method available for ${platformName}`);
+        }
+
+    } catch (error) {
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+});
+
+// Bulk refresh products by platform
+app.post('/products/refresh/:platform', async (req, res) => {
+    try {
+        const { platform } = req.params;
+        const { limit = 10, olderThan = 24 } = req.body; // olderThan in hours
+        const platformLower = platform.toLowerCase();
+        
+        // Validate platform
+        const availablePlatforms = platformLoader.getAvailablePlatforms();
+        if (!availablePlatforms.includes(platformLower)) {
+            return res.status(404).json({
+                status: 'error',
+                message: `Platform '${platform}' not found`,
+                availablePlatforms: availablePlatforms
+            });
+        }
+        
+        // Get stale products
+        const result = await pool.query(`
+            SELECT p.id, p.product_url, p.title, p.last_updated
+            FROM products p
+            JOIN platforms pl ON p.platform_id = pl.id
+            WHERE pl.name ILIKE $1
+              AND p.is_available = true
+              AND p.last_updated < NOW() - INTERVAL '${olderThan} hours'
+            ORDER BY p.last_updated ASC
+            LIMIT $2
+        `, [platformLower, limit]);
+        
+        if (result.rows.length === 0) {
+            return res.json({
+                status: 'success',
+                message: 'No stale products found to refresh',
+                platform: platformLower
+            });
+        }
+        
+        res.json({
+            status: 'started',
+            message: `Refreshing ${result.rows.length} products from ${platformLower}`,
+            platform: platformLower,
+            productsToRefresh: result.rows.length
+        });
+        
+        // Refresh asynchronously
+        (async () => {
+            const scraper = platformLoader.getScraper(platformLower);
+            let refreshed = 0;
+            let failed = 0;
+            
+            for (const product of result.rows) {
+                try {
+                    if (typeof scraper.refreshProduct === 'function') {
+                        await scraper.refreshProduct(product.product_url);
+                    } else if (typeof scraper.scrapeProductPage === 'function') {
+                        await scraper.scrapeProductPage(product.product_url);
+                    }
+                    refreshed++;
+                    console.log(`✅ Refreshed: ${product.title?.substring(0, 50)}...`);
+                    
+                    // Rate limiting
+                    await new Promise(r => setTimeout(r, 2000));
+                    
+                } catch (err) {
+                    failed++;
+                    console.error(`❌ Failed to refresh ${product.id}:`, err.message);
+                }
+            }
+            
+            console.log(`\n📊 Bulk refresh complete: ${refreshed} success, ${failed} failed`);
+        })();
+
+    } catch (error) {
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+});
+
+// ==================== STATUS ROUTES ====================
+
 // Get scraping status
 app.get('/status/:platform', async (req, res) => {
     try {
@@ -296,8 +565,8 @@ app.get('/status/:platform', async (req, res) => {
         
         // Validate platform (allow 'all' as special case)
         if (platformLower !== 'all') {
-            const availablePlatforms = platformLoader.listPlatforms();
-            if (!availablePlatforms.map(p => p.toLowerCase()).includes(platformLower)) {
+            const availablePlatforms = platformLoader.getAvailablePlatforms();
+            if (!availablePlatforms.includes(platformLower)) {
                 return res.status(404).json({
                     status: 'error',
                     message: `Platform '${platform}' not found`,
@@ -307,7 +576,7 @@ app.get('/status/:platform', async (req, res) => {
         }
         
         if (platformLower === 'all') {
-            const platforms = platformLoader.listPlatforms();
+            const platforms = platformLoader.getAvailablePlatforms();
             const statuses = {};
             
             for (const p of platforms) {
@@ -410,7 +679,7 @@ app.get('/stats', async (req, res) => {
         `);
 
         // Available scrapers
-        const availablePlatforms = platformLoader.listPlatforms();
+        const availablePlatforms = platformLoader.getAvailablePlatforms();
 
         res.json({
             byPlatform: result.rows,
@@ -594,145 +863,10 @@ app.get('/products/:id', async (req, res) => {
     }
 });
 
-// Refresh single product
-app.post('/products/:id/refresh', async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        // Get product from DB
-        const productResult = await pool.query(`
-            SELECT p.*, pl.name as platform 
-            FROM products p
-            JOIN platforms pl ON p.platform_id = pl.id
-            WHERE p.id = $1
-        `, [id]);
-
-        if (productResult.rows.length === 0) {
-            return res.status(404).json({
-                status: 'error',
-                message: `Product with ID ${id} not found`
-            });
-        }
-
-        const product = productResult.rows[0];
-        
-        res.json({
-            status: 'started',
-            message: `Refreshing product: ${product.title?.substring(0, 50)}...`,
-            productId: id,
-            platform: product.platform
-        });
-
-        // Refresh asynchronously
-        (async () => {
-            try {
-                const scraper = platformLoader.getPlatform(product.platform);
-                
-                if (typeof scraper.refreshProduct === 'function') {
-                    await scraper.refreshProduct(product.product_url);
-                } else if (typeof scraper.scrapeProductPage === 'function') {
-                    await scraper.scrapeProductPage(product.product_url);
-                } else {
-                    throw new Error(`${product.platform} scraper does not support product refresh`);
-                }
-
-                console.log(`✅ Refreshed product ${id}: ${product.title?.substring(0, 50)}...`);
-                
-            } catch (err) {
-                console.error(`❌ Failed to refresh product ${id}:`, err.message);
-            }
-        })();
-
-    } catch (error) {
-        res.status(500).json({
-            status: 'error',
-            message: error.message
-        });
-    }
-});
-
-// Bulk refresh platform products
-app.post('/products/refresh/:platform', async (req, res) => {
-    try {
-        const { platform } = req.params;
-        const { limit = 10, olderThan = 24 } = req.body;
-        const platformLower = platform.toLowerCase();
-
-        // Validate platform
-        const availablePlatforms = platformLoader.listPlatforms();
-        if (!availablePlatforms.map(p => p.toLowerCase()).includes(platformLower)) {
-            return res.status(404).json({
-                status: 'error',
-                message: `Platform '${platform}' not found`,
-                availablePlatforms: availablePlatforms
-            });
-        }
-
-        // Get stale products
-        const result = await pool.query(`
-            SELECT p.* FROM products p
-            JOIN platforms pl ON p.platform_id = pl.id
-            WHERE pl.name ILIKE $1
-              AND p.is_available = true
-              AND p.last_updated < NOW() - INTERVAL '${olderThan} hours'
-            ORDER BY p.last_updated ASC
-            LIMIT $2
-        `, [platformLower, limit]);
-        
-        if (result.rows.length === 0) {
-            return res.json({
-                status: 'success',
-                message: 'No stale products found to refresh',
-                platform: platformLower
-            });
-        }
-        
-        res.json({
-            status: 'started',
-            message: `Refreshing ${result.rows.length} products from ${platformLower}`,
-            platform: platformLower,
-            productsToRefresh: result.rows.length
-        });
-        
-        // Refresh asynchronously
-        (async () => {
-            const scraper = platformLoader.getPlatform(platformLower);
-            let refreshed = 0;
-            let failed = 0;
-            
-            for (const product of result.rows) {
-                try {
-                    if (typeof scraper.refreshProduct === 'function') {
-                        await scraper.refreshProduct(product.product_url);
-                    } else if (typeof scraper.scrapeProductPage === 'function') {
-                        await scraper.scrapeProductPage(product.product_url);
-                    }
-                    refreshed++;
-                    console.log(`✅ Refreshed: ${product.title?.substring(0, 50)}...`);
-                    
-                    // Rate limiting
-                    await new Promise(r => setTimeout(r, 2000));
-                    
-                } catch (err) {
-                    failed++;
-                    console.error(`❌ Failed to refresh ${product.id}:`, err.message);
-                }
-            }
-            
-            console.log(`\n📊 Bulk refresh complete: ${refreshed} success, ${failed} failed`);
-        })();
-
-    } catch (error) {
-        res.status(500).json({
-            status: 'error',
-            message: error.message
-        });
-    }
-});
-
 // ==================== CRON JOBS ====================
 
 // Scheduled scraping job - 2 AM IST daily
+// IST = UTC + 5:30, so 2:00 AM IST = 8:30 PM UTC (previous day)
 cron.schedule('30 20 * * *', async () => {
     console.log('\n' + '='.repeat(60));
     console.log('🕐 Scheduled Multi-Platform Scraping Started');
@@ -740,7 +874,7 @@ cron.schedule('30 20 * * *', async () => {
     console.log('='.repeat(60) + '\n');
     
     try {
-        const platforms = platformLoader.listPlatforms();
+        const platforms = platformLoader.getAvailablePlatforms();
         const limit = parseInt(process.env.SCRAPE_LIMIT) || 100;
         const results = {};
         
@@ -753,7 +887,7 @@ cron.schedule('30 20 * * *', async () => {
             console.log('-'.repeat(40));
             
             try {
-                const scraper = platformLoader.getPlatform(platform);
+                const scraper = platformLoader.getScraper(platform);
                 const startTime = Date.now();
                 const scraped = await scraper.scrape({ maxProducts: limit });
                 const duration = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -806,9 +940,9 @@ cron.schedule('30 20 * * *', async () => {
 });
 
 // Log cron job info
-const cronPlatforms = platformLoader.listPlatforms();
+const platforms = platformLoader.getAvailablePlatforms();
 console.log(`⏰ Cron job scheduled: Daily at 2:00 AM IST (20:30 UTC)`);
-console.log(`📋 Platforms configured: ${cronPlatforms.join(', ')}`);
+console.log(`📋 Platforms configured: ${platforms.join(', ')}`);
 
 // ==================== ERROR HANDLING ====================
 
@@ -861,7 +995,7 @@ async function startServer() {
 
         // Load platforms
         console.log('🔌 Loading platform scrapers...');
-        const loadedPlatforms = platformLoader.listPlatforms();
+        const loadedPlatforms = platformLoader.getAvailablePlatforms();
         console.log(`✅ Loaded ${loadedPlatforms.length} platforms: ${loadedPlatforms.join(', ')}`);
 
         // Start server
