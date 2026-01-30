@@ -53,6 +53,10 @@ jobs:
       - name: 📚 Install dependencies
         run: npm ci
       
+      - name: ✅ Verify script exists
+        run: |
+          ls -la src/scripts/scrape-all-platforms.js || echo "ERROR: Script not found!"
+          
       - name: 🕷️ Run Multi-Platform Scraper
         id: scrape
         env:
