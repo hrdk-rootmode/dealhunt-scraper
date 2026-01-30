@@ -1,7 +1,7 @@
 {
   "amazon": {
     "version": "2.0",
-    "last_updated": "2026-01-30T20:36:11.077Z",
+    "last_updated": "2026-01-30T22:09:21.899Z",
     "last_validated": "2025-01-30",
     "patterns": {
       "product_card": {
@@ -31,7 +31,7 @@
           ".a-price .a-offscreen"
         ],
         "confidence": 100,
-        "last_worked": "2026-01-30T20:36:11.209Z"
+        "last_worked": "2026-01-30T22:09:22.018Z"
       },
       "original_price": {
         "selectors": [
@@ -42,8 +42,8 @@
           "span[aria-hidden='true']~span.a-text-strike"
         ],
         "confidence": 100,
-        "last_worked": "2026-01-30T20:36:11.205Z",
-        "last_healed": "2026-01-30T20:36:11.077Z"
+        "last_worked": "2026-01-30T22:09:22.019Z",
+        "last_healed": "2026-01-30T22:09:21.899Z"
       },
       "rating": {
         "selectors": [
@@ -72,7 +72,7 @@
           "img[data-image-index]"
         ],
         "confidence": 100,
-        "last_worked": "2026-01-30T20:36:11.211Z"
+        "last_worked": "2026-01-30T22:09:22.020Z"
       },
       "product_url": {
         "selectors": [
@@ -83,7 +83,7 @@
           "a.a-link-normal[href*='/dp/']"
         ],
         "confidence": 100,
-        "last_worked": "2026-01-30T20:36:11.202Z",
+        "last_worked": "2026-01-30T22:09:22.013Z",
         "last_healed": "2026-01-30T19:48:03.250Z"
       }
     }
