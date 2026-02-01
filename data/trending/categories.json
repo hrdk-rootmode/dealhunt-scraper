@@ -1,0 +1,60 @@
+{
+  "lastUpdated": "2026-02-01T18:55:13.331Z",
+  "trending": [
+    "smartphones",
+    "laptops",
+    "headphones",
+    "deals",
+    "offers"
+  ],
+  "platformCategories": {
+    "amazon": {
+      "electronics": [
+        "smartphones",
+        "laptops",
+        "headphones",
+        "tablets",
+        "smart watches",
+        "cameras"
+      ],
+      "fashion": [
+        "mens tshirts",
+        "womens dresses",
+        "shoes",
+        "watches"
+      ],
+      "home": [
+        "home decor",
+        "kitchen appliances"
+      ],
+      "deals": [
+        "todays deals",
+        "best sellers",
+        "new launches"
+      ]
+    },
+    "flipkart": {
+      "electronics": [
+        "mobiles",
+        "laptops",
+        "headphones",
+        "tablets",
+        "smartwatches"
+      ],
+      "fashion": [
+        "mens clothing",
+        "womens clothing",
+        "footwear"
+      ],
+      "home": [
+        "home furnishing",
+        "kitchen appliances"
+      ],
+      "deals": [
+        "offers of the day",
+        "top deals",
+        "new arrivals"
+      ]
+    }
+  }
+}

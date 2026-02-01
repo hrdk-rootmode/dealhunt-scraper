@@ -1,0 +1,181 @@
+{
+  "amazon": {
+    "isActive": true,
+    "displayName": "Amazon India",
+    "categories": ["all"],
+    "base_url": "https://www.amazon.in",
+    "search_url": "https://www.amazon.in/s?k={query}&page={page}",
+    "selectors": {
+      "version": "3.1",
+      "last_updated": "2025-01-31",
+      "patterns": {
+        "product_card": {
+          "selectors": [
+            "div[data-component-type='s-search-result']",
+            ".s-result-item[data-asin]:not([data-asin=''])"
+          ],
+          "confidence": 100
+        },
+        "title": {
+          "selectors": [
+            ".a-size-medium.a-color-base.a-text-normal",
+            ".a-size-base-plus.a-color-base.a-text-normal",
+            "h2 span.a-text-normal",
+            "h2 a span",
+            ".a-link-normal .a-text-normal"
+          ],
+          "confidence": 100
+        },
+        "price": {
+          "selectors": [
+            ".a-price:not(.a-text-price) .a-price-whole",
+            "span.a-price-whole",
+            ".a-price .a-offscreen"
+          ],
+          "confidence": 100
+        },
+        "mrp": {
+          "selectors": [
+            ".a-text-price .a-offscreen",
+            "span.a-text-strike",
+            ".a-price.a-text-price .a-offscreen"
+          ],
+          "confidence": 90
+        },
+        "rating": {
+          "selectors": [
+            "i.a-icon-star-small span.a-icon-alt",
+            "span[aria-label*='out of 5 stars']",
+            ".a-icon-alt"
+          ],
+          "confidence": 85
+        },
+        "reviews": {
+          "selectors": [
+            "span.a-size-base.s-underline-text",
+            "span[aria-label*='ratings']",
+            "a[href*='customerReviews'] span"
+          ],
+          "confidence": 80
+        },
+        "image": {
+          "selectors": [
+            "img.s-image"
+          ],
+          "confidence": 100
+        },
+        "link": {
+          "selectors": [
+            "a.a-link-normal.s-no-outline",
+            "h2 a.a-link-normal",
+            "a.a-link-normal[href*='/dp/']"
+          ],
+          "confidence": 100
+        }
+      }
+    }
+  },
+  "flipkart": {
+    "isActive": true,
+    "displayName": "Flipkart",
+    "categories": ["all"],
+    "base_url": "https://www.flipkart.com",
+    "search_url": "https://www.flipkart.com/search?q={query}&page={page}",
+    "selectors": {
+      "version": "3.1",
+      "last_updated": "2025-01-31",
+      "patterns": {
+        "product_card": {
+          "selectors": [
+            "div[data-id]",
+            "div._1AtVbE",
+            "div._13oc-S"
+          ],
+          "confidence": 100
+        },
+        "title": {
+          "selectors": [
+            "div._4rR01T",
+            "a.s1Q9rs",
+            "a.IRpwTa",
+            "a.WKTcLC"
+          ],
+          "confidence": 100
+        },
+        "price": {
+          "selectors": [
+            "div._30jeq3",
+            "div._1_WHN1",
+            "div._25b18c div._30jeq3"
+          ],
+          "confidence": 100
+        },
+        "mrp": {
+          "selectors": [
+            "div._3I9_wc",
+            "div._27UcVY"
+          ],
+          "confidence": 90
+        },
+        "rating": {
+          "selectors": [
+            "div._3LWZlK"
+          ],
+          "confidence": 85
+        },
+        "reviews": {
+          "selectors": [
+            "span._2_R_DZ"
+          ],
+          "confidence": 80
+        },
+        "image": {
+          "selectors": [
+            "img._396cs4",
+            "img._2r_T1I"
+          ],
+          "confidence": 100
+        },
+        "link": {
+          "selectors": [
+            "a._1fQZEK",
+            "a._2rpwqI",
+            "a.s1Q9rs",
+            "a._2UzuFa"
+          ],
+          "confidence": 100
+        }
+      }
+    }
+  },
+  "croma": {
+    "isActive": false,
+    "displayName": "Croma",
+    "categories": ["electronics", "smartphones", "laptops", "appliances"],
+    "base_url": "https://www.croma.com",
+    "search_url": "https://www.croma.com/search?q={query}",
+    "selectors": {
+      "version": "1.0",
+      "patterns": {
+        "product_card": { "selectors": ["li.product-item"], "confidence": 50 },
+        "title": { "selectors": ["h3.product-title"], "confidence": 50 },
+        "price": { "selectors": ["span.amount"], "confidence": 50 }
+      }
+    }
+  },
+  "myntra": {
+    "isActive": false,
+    "displayName": "Myntra",
+    "categories": ["fashion", "footwear", "watches", "accessories"],
+    "base_url": "https://www.myntra.com",
+    "search_url": "https://www.myntra.com/{query}",
+    "selectors": {
+      "version": "1.0",
+      "patterns": {
+        "product_card": { "selectors": ["li.product-base"], "confidence": 50 },
+        "title": { "selectors": ["h3.product-brand"], "confidence": 50 },
+        "price": { "selectors": ["span.product-discountedPrice"], "confidence": 50 }
+      }
+    }
+  }
+}
