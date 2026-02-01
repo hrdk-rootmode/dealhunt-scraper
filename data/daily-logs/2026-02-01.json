@@ -1,0 +1,48 @@
+{
+  "date": "2026-02-01",
+  "startedAt": "2026-02-01T18:55:04.055Z",
+  "completedAt": "2026-02-01T19:08:55.046Z",
+  "duration": "13m 51s",
+  "trending": [
+    "smartphones",
+    "laptops",
+    "headphones",
+    "deals",
+    "offers"
+  ],
+  "summary": {
+    "totalFound": 330,
+    "totalSaved": 224,
+    "totalUpdated": 0,
+    "aiProcessed": 100
+  },
+  "platforms": {
+    "amazon": {
+      "found": 180,
+      "saved": 160,
+      "updated": 0,
+      "queries": [
+        "smartphones",
+        "laptops",
+        "headphones",
+        "tablets",
+        "todays deals",
+        "best sellers"
+      ]
+    },
+    "flipkart": {
+      "found": 150,
+      "saved": 64,
+      "updated": 0,
+      "queries": [
+        "mobiles",
+        "laptops",
+        "headphones",
+        "tablets",
+        "offers of the day",
+        "top deals"
+      ]
+    }
+  },
+  "errors": []
+}
