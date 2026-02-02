@@ -1,41 +1,63 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
+const { v4: uuid } = require('uuid');
 const { initDB, DB } = require('./src/core/db');
 const Scraper = require('./src/core/scraper');
 const AI = require('./src/core/ai');
 const CONFIG = require('./src/config');
+const Auth = require('./src/api/auth');
+const CacheScheduler = require('./src/scripts/cache-trending');
 
 const app = express();
 app.use(express.json());
 
 // ═══════════════════════════════════════════════
-// MIDDLEWARE
+// GLOBAL MIDDLEWARE
 // ═══════════════════════════════════════════════
 
+// Request ID Middleware (for tracing)
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+    req.id = req.headers['x-request-id'] || uuid();
+    res.setHeader('x-request-id', req.id);
     next();
 });
 
+// Rate Limiter
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 mins
+    max: 100 // limit each IP to 100 requests per windowMs
+});
+app.use(limiter);
+
+// Logging with Request ID
+app.use((req, res, next) => {
+    console.log(`[${req.id}] ${new Date().toISOString()} ${req.method} ${req.path}`);
+    next();
+});
+
+// Initialize Services
+Auth.init();
+CacheScheduler.init().catch(console.error);
+
 // ═══════════════════════════════════════════════
-// HEALTH & STATUS ROUTES
+// ROUTES
 // ═══════════════════════════════════════════════
 
-app.get('/', (req, res) => {
-    res.json({
-        name: 'DealHunt API',
-        version: '3.0.0',
-        status: 'online',
-        platforms: Scraper.getAvailable(),
-        endpoints: {
-            health: 'GET /health',
-            stats: 'GET /stats',
-            products: 'GET /api/products',
-            scrape: 'POST /trigger/scrape',
-            daily: 'POST /trigger/daily',
-            cleanup: 'POST /trigger/cleanup'
-        }
-    });
-});
+// Public Routes (Products, Search, etc.)
+app.use('/api', require('./src/routes/public'));
+
+// User Routes (Wishlist, Profile, Payments) - Protected
+app.use('/api/user', require('./src/routes/user'));
+
+// Admin Routes (Dashboard) - Protected
+app.use('/admin', require('./src/routes/admin'));
+
+// System Routes
+app.get('/', (req, res) => res.json({ 
+    status: 'online', 
+    version: '3.0.0', 
+    admob: CONFIG.ADMOB // Send AdMob IDs to app
+}));
 
 app.get('/health', async (req, res) => {
     try {
@@ -60,74 +82,21 @@ app.get('/stats', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════
-// API ROUTES
+// AUTOMATION TRIGGERS (Secure)
 // ═══════════════════════════════════════════════
 
-app.get('/api/config', async (req, res) => {
-    const platforms = {};
-    for (const name of CONFIG.getActivePlatforms()) {
-        platforms[name] = await DB.getPlatformSelectors(name);
-    }
-    res.json({ platforms });
-});
-
-app.get('/api/products', async (req, res) => {
-    try {
-        const { category, limit = 20, offset = 0 } = req.query;
-        
-        let query = `
-            SELECT p.*, 
-                   json_agg(json_build_object(
-                       'platform', pl.name,
-                       'price', link.current_price,
-                       'original_price', link.original_price,
-                       'discount', link.discount_percent,
-                       'url', link.product_url
-                   )) as prices
-            FROM products p
-            LEFT JOIN product_links link ON link.product_id = p.id
-            LEFT JOIN platforms pl ON pl.id = link.platform_id
-        `;
-        
-        const params = [];
-        if (category) {
-            query += ` WHERE p.category = $1`;
-            params.push(category);
-        }
-        
-        query += ` GROUP BY p.id ORDER BY p.last_updated DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-        params.push(parseInt(limit), parseInt(offset));
-        
-        const result = await DB.query(query, params);
-        res.json({ products: result.rows, count: result.rows.length });
-        
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// ═══════════════════════════════════════════════
-// TRIGGER ROUTES (For Cron Jobs)
-// ═══════════════════════════════════════════════
-
-// Verify cron secret (optional security)
-function verifyCronSecret(req, res, next) {
-    const secret = req.headers['x-cron-secret'];
-    if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-    next();
+function verifyCron(req, res, next) {
+    if (req.headers['x-cron-secret'] === CONFIG.CRON_SECRET) return next();
+    if (CONFIG.ENV === 'development') return next(); // Allow in dev without secret
+    return res.status(401).json({ error: 'Unauthorized' });
 }
 
-// Manual Scrape Trigger
-app.post('/trigger/scrape', verifyCronSecret, async (req, res) => {
-    const { platform, query, limit } = req.body;
+app.post('/trigger/scrape', verifyCron, (req, res) => {
+    res.json({ message: 'Scraping started' });
     
-    res.json({ message: 'Scraping started', platform, query });
-    
-    // Run in background
     setImmediate(async () => {
         try {
+            const { platform, query, limit } = req.body;
             if (platform === 'all') {
                 await Scraper.runAll(query || 'smartphones', limit || 10);
             } else {
@@ -140,14 +109,9 @@ app.post('/trigger/scrape', verifyCronSecret, async (req, res) => {
     });
 });
 
-// Daily Automation Trigger
-app.post('/trigger/daily', verifyCronSecret, async (req, res) => {
-    res.json({ 
-        message: 'Daily automation started',
-        time: new Date().toISOString()
-    });
+app.post('/trigger/daily', verifyCron, (req, res) => {
+    res.json({ message: 'Daily automation started' });
     
-    // Run in background
     setImmediate(async () => {
         try {
             const { runDailyAutomation } = require('./src/scripts/daily-automation');
@@ -158,14 +122,9 @@ app.post('/trigger/daily', verifyCronSecret, async (req, res) => {
     });
 });
 
-// Monthly Cleanup Trigger
-app.post('/trigger/cleanup', verifyCronSecret, async (req, res) => {
-    res.json({ 
-        message: 'Monthly cleanup started',
-        time: new Date().toISOString()
-    });
+app.post('/trigger/cleanup', verifyCron, (req, res) => {
+    res.json({ message: 'Cleanup started' });
     
-    // Run in background
     setImmediate(async () => {
         try {
             const { runMonthlyCleanup } = require('./src/scripts/monthly-cleanup');
@@ -176,10 +135,8 @@ app.post('/trigger/cleanup', verifyCronSecret, async (req, res) => {
     });
 });
 
-// AI Processing Trigger
-app.post('/trigger/ai', verifyCronSecret, async (req, res) => {
+app.post('/trigger/ai', verifyCron, (req, res) => {
     const { limit } = req.body;
-    
     res.json({ message: 'AI processing started' });
     
     setImmediate(async () => {
@@ -191,7 +148,7 @@ app.post('/trigger/ai', verifyCronSecret, async (req, res) => {
     });
 });
 
-// Healing Trigger
+// Healing Trigger (For App fallback)
 app.post('/api/heal', async (req, res) => {
     const { platform, field, html } = req.body;
     
@@ -209,6 +166,42 @@ app.post('/api/heal', async (req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+// ═══════════════════════════════════════════════
+// GLOBAL ERROR HANDLERS (CRITICAL FIX #1)
+// ═══════════════════════════════════════════════
+
+// 404 Handler
+app.use((req, res) => {
+    res.status(404).json({ 
+        error: 'Route not found',
+        path: req.path,
+        method: req.method,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Global Error Handler (MUST BE LAST)
+app.use((err, req, res, next) => {
+    const statusCode = err.statusCode || err.status || 500;
+    const isDev = CONFIG.ENV === 'development';
+    
+    console.error('🔴 ERROR:', {
+        message: err.message,
+        status: statusCode,
+        path: req.path,
+        method: req.method,
+        stack: isDev ? err.stack : undefined,
+        timestamp: new Date().toISOString()
+    });
+    
+    res.status(statusCode).json({
+        error: isDev ? err.message : 'Internal server error',
+        status: statusCode,
+        requestId: req.id || 'unknown',
+        timestamp: new Date().toISOString()
+    });
 });
 
 // ═══════════════════════════════════════════════

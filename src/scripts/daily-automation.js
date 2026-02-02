@@ -2,6 +2,7 @@ const Scraper = require('../core/scraper');
 const AI = require('../core/ai');
 const { initDB, DB } = require('../core/db');
 const GitHubBackup = require('./github-backup');
+const { checkPriceAlerts } = require('./check-alerts');
 const fs = require('fs');
 const path = require('path');
 
@@ -119,6 +120,7 @@ async function runDailyAutomation() {
         saved: 0,
         updated: 0,
         aiProcessed: 0,
+        alertsSent: 0,
         errors: []
     };
     
@@ -180,7 +182,7 @@ async function runDailyAutomation() {
                     }
                     
                     const saved = result.saved || 0;
-                    const updated = result.duplicates || 0;
+                    const updated = result.duplicates || 0; // Fixed: Use 'duplicates' from DB.bulkUpsertProducts
                     const found = result.found || 0;
                     
                     console.log(`      ✅ Found: ${found}, Saved: ${saved}, Updated: ${updated}`);
@@ -230,11 +232,21 @@ async function runDailyAutomation() {
         console.log(`   ✅ Processed: ${results.aiProcessed} products`);
         
         // ═══════════════════════════════════════
-        // PHASE 4: BACKUP TO GITHUB
+        // PHASE 4: PRICE ALERTS (NEW STEP)
         // ═══════════════════════════════════════
         
         console.log('\n' + '═'.repeat(60));
-        console.log('💾 PHASE 4: GITHUB BACKUP');
+        console.log('🔔 PHASE 4: CHECKING PRICE ALERTS');
+        console.log('═'.repeat(60) + '\n');
+        
+        results.alertsSent = await checkPriceAlerts();
+        
+        // ═══════════════════════════════════════
+        // PHASE 5: GITHUB BACKUP
+        // ═══════════════════════════════════════
+        
+        console.log('\n' + '═'.repeat(60));
+        console.log('💾 PHASE 5: GITHUB BACKUP');
         console.log('═'.repeat(60) + '\n');
         
         const duration = Math.round((Date.now() - startTime) / 1000);
@@ -244,13 +256,14 @@ async function runDailyAutomation() {
             startedAt: new Date(startTime).toISOString(),
             completedAt: new Date().toISOString(),
             duration: `${Math.floor(duration / 60)}m ${duration % 60}s`,
-            trending: results.trending,
             summary: {
                 totalFound: results.found,
                 totalSaved: results.saved,
                 totalUpdated: results.updated,
-                aiProcessed: results.aiProcessed
+                aiProcessed: results.aiProcessed,
+                alertsSent: results.alertsSent
             },
+            trending: results.trending,
             platforms: results.platforms,
             errors: results.errors
         };
@@ -258,7 +271,7 @@ async function runDailyAutomation() {
         const githubSuccess = await GitHubBackup.backupDailyLog(today, dailyLogData);
         results.githubCommitted = githubSuccess;
         
-        // Update database log
+        // Final DB Update
         await DB.updateDailyLog(logId, {
             status: 'completed',
             trending: results.trending,
@@ -267,6 +280,7 @@ async function runDailyAutomation() {
             saved: results.saved,
             updated: results.updated,
             aiProcessed: results.aiProcessed,
+            alertsSent: results.alertsSent,
             errors: results.errors,
             duration: duration,
             githubCommitted: githubSuccess
@@ -300,6 +314,7 @@ async function runDailyAutomation() {
     console.log(`   🆕 New Saved:         ${results.saved}`);
     console.log(`   🔄 Updated:           ${results.updated}`);
     console.log(`   🧠 AI Processed:      ${results.aiProcessed}`);
+    console.log(`   🔔 Alerts Sent:       ${results.alertsSent}`);
     console.log(`   📊 Total in DB:       ${stats.products}`);
     console.log(`   ⏱️  Duration:          ${Math.floor(duration / 60)}m ${duration % 60}s`);
     console.log(`   💾 GitHub Backup:     ${results.githubCommitted ? '✅' : '❌'}`);
