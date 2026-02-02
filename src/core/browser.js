@@ -9,7 +9,11 @@ async function getBrowser() {
     }
     
     if (!puppeteer) {
-        puppeteer = require('puppeteer');
+        try {
+            puppeteer = require('puppeteer-core');
+        } catch (e) {
+            console.log('Puppeteer not found, browser mode disabled');
+        }
     }
     
     if (!browser) {
